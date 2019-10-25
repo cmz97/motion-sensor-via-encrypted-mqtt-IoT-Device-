@@ -5,6 +5,7 @@ import machine
 import esp32
 import upip
 import sys
+import time
 from machine import Timer
 from machine import TouchPad, Pin
 from machine import sleep
@@ -17,6 +18,8 @@ from math import floor
 global ssid
 global wlan
 global touchThreshold
+
+import micropython
 
 # Button A: 15
 # Button B: 32
@@ -36,7 +39,7 @@ if not wlan.isconnected():
     print('connecting to network...')
     wlan.connect(ssid, 'miaomiaomiao')
     while not wlan.isconnected():
-        pass
+        utime.sleep(1)
 
 print('Oh Yes! Get connected')
 print('Connected to ' + ssid)
@@ -44,12 +47,18 @@ print('MAC Address: ' + ubinascii.hexlify(network.WLAN().config('mac'),':').deco
 print('IP Address: ' + wlan.ifconfig()[0])
 print('')
 
-upip.install("micropython-umqtt.simple")
-upip.install("micropython-umqtt.robust")
-upip.install("micropython-hmac")
+try:
+    import umqtt.simple
+    import umqtt.robust
+    import hmac
+except:
+    upip.install("micropython-umqtt.simple")
+    upip.install("micropython-umqtt.robust")
+    upip.install("micropython-hmac")
+
+from umqtt.simple import MQTTClient
 
 STATE = 0
-
 
 
 i2cAddrGolden = [60, 72, 83]
@@ -266,10 +275,38 @@ button1.irq(trigger=Pin.IRQ_RISING, handler=button1_int_handler)
 button2 = Pin(32, Pin.IN, Pin.PULL_UP)
 button2.irq(trigger=Pin.IRQ_RISING, handler=button2_int_handler)
 
-while True:
-    if STATE is 1:
-        interfacingSensor()
-    elif STATE is 2:
-        spinnerDemo()
+#----------MQTT Shit-----------
+sessionIDTopic = 'SPINNER/SESSIONID'
+client_id = ubinascii.hexlify(machine.unique_id())
 
+def sessionIDTopicInterruptHandler(topic, msg):
+    print('Msg From SessionID Topic: ' + str(msg))
+
+def connect2broker(client_id, mqtt_server, username, password, port, topic_sub):
+    client = MQTTClient(client_id, server = mqtt_server, user = username, password = password, port = port)
+    client.set_callback(sessionIDTopicInterruptHandler)
+    client.connect()
+    client.subscribe(topic_sub)
+    print('Connected to %s,  to %s topic' % (mqtt_server, topic_sub))
+    return client
+
+client = connect2broker(client_id, "farmer.cloudmqtt.com", 'swpdieal', 'MdwlLdTQWzbI', '14584', sessionIDTopic)
+
+
+
+while True:
+    try:
+        new_message = client.check_msg()
+        time.sleep(1)
+    except OSError as e:
+        print('Failed to connect to MQTT broker. Reconnecting...')
+        time.sleep(10)
+        machine.reset()
+
+
+# while True:
+#     if STATE is 1:
+#         interfacingSensor()
+#     elif STATE is 2:
+#         spinnerDemo()
 print('\n\n')
