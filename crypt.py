@@ -85,14 +85,13 @@ class CryptAes:
         """
         myAES = aes(self.ivkey,2,self.staticiv)# using (staticiv, ivkey) for iv
         print(self.iv)
-        encrypted_iv = myAES.encrypt(bytes(self.iv,'utf-8'))
-        print(encrypted_iv)
+        print(bytes(self.iv,'utf-8'))
+        self.encrypted_iv = myAES.encrypt(bytes(self.iv,'utf-8'))
+        print(self.encrypted_iv)
 
         myAES = aes(self.datakey,2,self.iv) #(iv, datakey) for nodeid and sensor_data
-        encrypted_nodeid = myAES.encrypt(bytes(self.nodeid,'utf-8'))
-        encrypted_sensor_data = self.blockEncrypterAES(myAES, sensor_data)
-
-        return encrypted_iv,encrypted_nodeid,encrypted_sensor_data
+        self.encrypted_nodeid = myAES.encrypt(bytes(self.nodeid,'utf-8'))
+        self.encrypted_sensor_data = self.blockEncrypterAES(myAES, sensor_data)
 
 
     def sign_hmac(self, sessionID):
@@ -101,7 +100,9 @@ class CryptAes:
         :param sessionID: unique value to identify the current communication session
         :return         : generated HMAC
         """
-
+        dataPreProcess = self.encrypted_iv + self.encrypted_nodeid + self.encrypted_sensor_data + sessionID
+        myHMAC = hmac.HMAC(bytes(self.passphrase,'utf-8'),msg = dataPreProcess, digestmod = hashlib.sha224)
+        return myHMAC.digest()
 
     def send_mqtt(self, hmac_signed):
         """Prepare the message for MQTT transfer using all of encrypted iv, encrypted nodeid,
@@ -109,6 +110,13 @@ class CryptAes:
         :param hmac_signed  : generated HMAC
         :return             : MQTT message to publish to Spinner #2 on Topic "Sensor_Data"
         """
+        data = {}
+        data['e_iv'] = self.encrypted_iv
+        data['e_nodeid'] =  self.encrypted_nodeid
+        data['e_sd'] =  self.encrypted_sensor_data
+        data['HMAC'] =  hmac_signed
+        print('PROCESSED JSON: '+ str(data))
+        return json.dumps(data)
 
 
     #------------------------------------SPINNER #2 Needs to Use These Functions--------------------------------------#

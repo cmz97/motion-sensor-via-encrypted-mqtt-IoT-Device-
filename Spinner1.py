@@ -14,7 +14,6 @@ from math import sqrt
 from math import acos
 from machine import PWM
 from math import floor
-from crypt import CryptAes
 
 global ssid
 global wlan
@@ -61,6 +60,8 @@ except:
     upip.install("micropython-hmac")
 
 from umqtt.simple import MQTTClient
+from crypt import CryptAes
+
 
 STATE = 0
 
@@ -207,21 +208,6 @@ def interfacingSensor():
 
     print('All initiation is set!')
 
-def spinnerDemo(sessionID):
-    xAverage, yAverage, zAverage, _, _ = sampleAndHoldAccel(10)
-    #format its value to compress
-    dataX, dataY, dataZ = "{0:.2f}".format(xAverage), "{0:.2f}".format(yAverage), "{0:.2f}".format(zAverage)
-    dataTemp = "{0:.2f}".format(sampleAndHoldTemperature(10))
-
-    #Checksum
-    print(xAverage, yAverage, zAverage, dataTemp)
-    sensor_data = ubinascii.hexlify(dataX + dataY+ dataZ+ dataTemp)
-    print('Hex: ' + str(sensor_data) + '[' + str(len(sensor_data)) + ']')
-
-    #AES
-    myCrypto = CryptAes(sessionID)
-    encrypted_iv,encrypted_nodeid,encrypted_sensor_data = myCrypto.encrypt(sensor_data)
-
 
 # --------- Irq Handler and Functions ----------
 def button1_int_handler(pin):
@@ -251,23 +237,49 @@ button2.irq(trigger=Pin.IRQ_RISING, handler=button2_int_handler)
 
 #----------MQTT Shit-----------
 sessionIDTopic = 'SPINNER/SESSIONID'
+sensorDataTopic = 'SPINNER/SENSORDATA'
+
 client_id = ubinascii.hexlify(machine.unique_id())
 
+def spinnerDemo(sessionID):
+    xAverage, yAverage, zAverage, _, _ = sampleAndHoldAccel(10)
+    #format its value to compress
+    dataX, dataY, dataZ = "{0:.2f}".format(xAverage), "{0:.2f}".format(yAverage), "{0:.2f}".format(zAverage)
+    dataTemp = "{0:.2f}".format(sampleAndHoldTemperature(10))
+
+    #Checksum
+    print(xAverage, yAverage, zAverage, dataTemp)
+    sensor_data = ubinascii.hexlify(dataX + dataY+ dataZ+ dataTemp)
+    print('Hex: ' + str(sensor_data) + '[' + str(len(sensor_data)) + ']')
+
+    #AES
+    myCrypto = CryptAes(sessionID)
+    myCrypto.encrypt(sensor_data)
+    myHMAC = myCrypto.sign_hmac(sessionID)
+    jsonData = myCrypto.send_mqtt(myHMAC)
+
+    #send to Topic
+    client.publish(topic=sensorDataTopic,msg=str(jsonData))
+
 def sessionIDTopicInterruptHandler(topic, msg):
-    print('Msg From SessionID Topic: ' + str(msg))
-    spinnerDemo(msg)
+    strTopic = str(topic).strip('b\'').strip('\'')
+    if strTopic == sessionIDTopic:
+        print('Msg From SessionID Topic: ' + str(msg))
+        spinnerDemo(msg)
 
+    elif strTopic == sensorDataTopic:
+        print('Msg From Sensor Data Topic: ' + str(msg))
 
-def connect2broker(client_id, mqtt_server, username, password, port, topic_sub):
+def connect2broker(client_id, mqtt_server, username, password, port):
     client = MQTTClient(client_id, server = mqtt_server, user = username, password = password, port = port)
     client.set_callback(sessionIDTopicInterruptHandler)
     client.connect()
-    client.subscribe(topic_sub)
-    print('Connected to %s,  to %s topic' % (mqtt_server, topic_sub))
+    client.subscribe(sessionIDTopic)
+    print('Connected to %s,  to %s topic' % (mqtt_server, sessionIDTopic))
     return client
 
-client = connect2broker(client_id, "farmer.cloudmqtt.com", 'swpdieal', 'MdwlLdTQWzbI', '14584', sessionIDTopic)
 
+client = connect2broker(client_id, "farmer.cloudmqtt.com", 'swpdieal', 'MdwlLdTQWzbI', '14584')
 
 while True:
     if STATE is 1:
@@ -279,8 +291,8 @@ while True:
             time.sleep(1)
         except OSError as e:
             print('Failed to connect to MQTT broker. Reconnecting...')
-            time.sleep(10)
-            machine.reset()
+            time.sleep(1)
+            #machine.reset()
 
 
 print('\n\n')
