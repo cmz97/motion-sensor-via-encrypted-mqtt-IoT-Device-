@@ -14,10 +14,13 @@ from math import sqrt
 from math import acos
 from machine import PWM
 from math import floor
+from crypt import CryptAes
 
 global ssid
 global wlan
 global touchThreshold
+
+FIRSTIME = True
 
 import micropython
 
@@ -31,15 +34,16 @@ import micropython
 # Red LED: 27
 # Yellow LED: 33
 
-ssid = 'ChinaMobile'
+ssid = 'LAWRENCE'
+passphrase = '11111111'
 
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 if not wlan.isconnected():
     print('connecting to network...')
-    wlan.connect(ssid, 'miaomiaomiao')
+    wlan.connect(ssid, passphrase)
     while not wlan.isconnected():
-        utime.sleep(1)
+        pass
 
 print('Oh Yes! Get connected')
 print('Connected to ' + ssid)
@@ -79,49 +83,13 @@ redLed.off()
 greenLed = Pin(12, Pin.OUT, Pin.PULL_DOWN)
 greenLed.off()
 
-#Init I2C
-i2c = machine.I2C(scl=machine.Pin(22), sda=machine.Pin(23), freq=400000)
-print('scanning I2C Now ...')
-i2cAddrs = i2c.scan()
-print(i2cAddrs)
-
-for addr in i2cAddrGolden:
-    if addr not in i2cAddrs:
-            print('I2C Device Error!, Incorrect or not enough I2C Connected!')
-            sys.exit()
-
-print('\nCorrect I2C Device Detected!\n')
-
-#Set Resolution and Range
-data = i2c.readfrom_mem(IMU_I2C_ADDR, IMU_DATA_FORMAT_REG, 1) #read Register 0x31—DATA_FORMAT (Read/Write)
-data = int.from_bytes(data, 'big')
-print('data:' + str(data))
-data = data & 0b11110100 # 2-g range and 10 bit mode
-i2c.writeto_mem(IMU_I2C_ADDR, IMU_DATA_FORMAT_REG, bytes([data]))
-print('Resolution and Range Set!')
-
-#Set ODR Speed
-data = i2c.readfrom_mem(IMU_I2C_ADDR, IMU_BW_RATE_REG, 1) #Register 0x2C—BW_RATE (Read/Write)
-data = int.from_bytes(data, 'big')
-print('data:' + str(data))
-data &= 0b11110000 # clear last four bit
-data |= 0b00001101 # 800HZ Rate
-i2c.writeto_mem(IMU_I2C_ADDR, IMU_BW_RATE_REG, bytes([data]))
-print('ODR Speed Set!')
-
-#Set Measurement Mode
-data = i2c.readfrom_mem(IMU_I2C_ADDR, IMU_POWER_CTL_REG, 1) #Register 0x2C—BW_RATE (Read/Write)
-data = int.from_bytes(data, 'big')
-print('data:' + str(data))
-data |= 0b00001000 # Enable Measurement Mode
-i2c.writeto_mem(IMU_I2C_ADDR, IMU_POWER_CTL_REG, bytes([data]))
-print('measurement mode on!')
+# --------- Helper Functions  ----------
 
 def from2sCompBits2SignedInt(tempByteArr, bits):
     val = int.from_bytes(tempByteArr, 'big', True)
     if (val & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
         val = val - (1 << bits)        # compute negative value
-    return val                         # return positive value as is
+    return val # return positive value as is
 
 def twosCompliments(num):
     if num >= 0:
@@ -129,7 +97,6 @@ def twosCompliments(num):
     else:
         return int(bin(num % (1<<8))) #invert and plus 1, 16 bits
 
-#Offsset Calibration Sample and Hold
 def getRightValueIn10Bit(byteArray):
     tempByteArr = bytes([byteArray[1],byteArray[0]])
     temp16bitVal = int.from_bytes(tempByteArr, 'big', False) # take all 16 value
@@ -152,32 +119,6 @@ def sampleAndHoldAccel(samples, xAverage = 0, yAverage = 0, zAverage = 0):
     zAverage = (int(zAverage / samples) >> 2) * 0.0156
     return xAverage,yAverage,zAverage, delT, accelSums
 
-print('sample and holding ... (1000 sample)')
-xAverage, yAverage, zAverage, _ , _ = sampleAndHoldAccel(1000) #first hardware offset
-print('xyz 10 sample hold avg: '+ str(xAverage) + ', ' + str(yAverage) + ', ' + str(zAverage))
-
-#write offset to memory
-i2c.writeto_mem(IMU_I2C_ADDR, 0x1E, bytes([twosCompliments(int(xAverage / 4))])) # concatenate to 1 byte, MSB
-i2c.writeto_mem(IMU_I2C_ADDR, 0x1F, bytes([twosCompliments(int(yAverage / 4))])) # concatenate to 1 byte, MSB
-i2c.writeto_mem(IMU_I2C_ADDR, 0x20, bytes([twosCompliments(int((zAverage + 32) / 4))])) # concatenate to 1 byte, MSB
-
-xAverage, yAverage, zAverage, _ , _ = sampleAndHoldAccel(1000) #then software offset
-print('xyz 10 sample hold avg: '+ str(xAverage) + ', ' + str(yAverage) + ', ' + str(zAverage))
-print('now software offset the values')
-
-print('setting temperature chip resolution ...')
-
-#Set Resolution and Range
-data = i2c.readfrom_mem(TMP_I2C_ADDR, TMP_CONFIG_REG, 1) #read Register 0x31—DATA_FORMAT (Read/Write)
-data = int.from_bytes(data, 'big')
-print('data:' + str(data))
-data = data | 0b10000000 # set the high resolution mode
-i2c.writeto_mem(TMP_I2C_ADDR, TMP_CONFIG_REG, bytes([data]))
-print('Resolution Set! Waiting for button input')
-
-print('All initiation is set!')
-
-
 def getAngle(xAverage, yAverage, zAverage):
     roll = atan2(yAverage , zAverage) * 57.3
     pitch = atan2((- xAverage) , sqrt(yAverage * yAverage + zAverage * zAverage)) * 57.3
@@ -188,31 +129,6 @@ def getAngle(xAverage, yAverage, zAverage):
 
     theta = acos(zAverage) * 57.3#radian 2 degree
     return roll, pitch, theta
-
-def spinnerDemo():
-    global STATE
-
-    xAveragePrev, yAveragePrev, zAveragePrev = 0, 0, 0
-    thresh_movment = 0.03
-
-    while(STATE == 2):
-        xAverage, yAverage, zAverage, delT, accelSums = sampleAndHoldAccel(10)
-        roll, pitch, theta = getAngle(xAverage, yAverage, zAverage)
-
-        if roll > 30 or pitch > 30 or theta > 30 or roll < -30 or pitch < -30 or theta < -30:
-            yellowLed.on()
-        else:
-            yellowLed.off()
-
-        if abs(xAveragePrev - xAverage) > thresh_movment or abs(yAveragePrev - yAverage) > thresh_movment or abs(zAveragePrev - zAverage) > thresh_movment:
-            greenLed.off()
-        else:
-            greenLed.on()
-
-        xAveragePrev, yAveragePrev, zAveragePrev = xAverage, yAverage, zAverage
-
-        print('('+ str(xAverage) + ', ' + str(yAverage) + ', ' + str(zAverage) +
-        ') deltaT: ' + str(delT) + 's , Angle: (' + str(roll) + ', ' + str(pitch) + ', ' + str(theta) + ')')
 
 def getRightValueIn13Bit(byteArray):
     temp16bitVal = int.from_bytes(byteArray, 'big', False) # take all 16 value
@@ -226,36 +142,95 @@ def sampleAndHoldTemperature(samples, tempAverage = 0):
     tempAverage = tempAverage / (samples * 16)
     return tempAverage
 
+# --------- Senor Initialization ----------
 def interfacingSensor():
-    global STATE
-    temperaturePrev = 0
-    onBoardLed = PWM(Pin(13))
-    onBoardLed.deinit()
-    onBoardLed.init()
-    onBoardLed.freq(10)
-    onBoardLed.duty(512)
-    while STATE == 1:
-        temperature = sampleAndHoldTemperature(100)
-        print('current temperature:' + str(temperature) + ' degree C')
+    global i2c
+    i2c = machine.I2C(scl=machine.Pin(22), sda=machine.Pin(23), freq=400000)
+    print('scanning I2C Now ...')
+    i2cAddrs = i2c.scan()
+    print(i2cAddrs)
 
-        if floor(temperature) - floor(temperaturePrev) >= 1.0:
-            if onBoardLed.freq() <= 1000:
-                print('+++++++++++!')
-                onBoardLed.freq(onBoardLed.freq() + 5)
-        elif floor(temperature) - floor(temperaturePrev) <= -1.0:
-            if onBoardLed.freq() >= 5:
-                print('-----------!')
-                onBoardLed.freq(onBoardLed.freq() - 5)
-        temperaturePrev = temperature
+    for addr in i2cAddrGolden:
+        if addr not in i2cAddrs:
+                print('I2C Device Error!, Incorrect or not enough I2C Connected!')
+                sys.exit()
 
-#Irq Handler and Functions
+    print('\nCorrect I2C Device Detected!\n')
+
+    #Set Resolution and Range
+    data = i2c.readfrom_mem(IMU_I2C_ADDR, IMU_DATA_FORMAT_REG, 1) #read Register 0x31—DATA_FORMAT (Read/Write)
+    data = int.from_bytes(data, 'big')
+    print('data:' + str(data))
+    data = data & 0b11110100 # 2-g range and 10 bit mode
+    i2c.writeto_mem(IMU_I2C_ADDR, IMU_DATA_FORMAT_REG, bytes([data]))
+    print('Resolution and Range Set!')
+
+    #Set ODR Speed
+    data = i2c.readfrom_mem(IMU_I2C_ADDR, IMU_BW_RATE_REG, 1) #Register 0x2C—BW_RATE (Read/Write)
+    data = int.from_bytes(data, 'big')
+    print('data:' + str(data))
+    data &= 0b11110000 # clear last four bit
+    data |= 0b00001101 # 800HZ Rate
+    i2c.writeto_mem(IMU_I2C_ADDR, IMU_BW_RATE_REG, bytes([data]))
+    print('ODR Speed Set!')
+
+    #Set Measurement Mode
+    data = i2c.readfrom_mem(IMU_I2C_ADDR, IMU_POWER_CTL_REG, 1) #Register 0x2C—BW_RATE (Read/Write)
+    data = int.from_bytes(data, 'big')
+    print('data:' + str(data))
+    data |= 0b00001000 # Enable Measurement Mode
+    i2c.writeto_mem(IMU_I2C_ADDR, IMU_POWER_CTL_REG, bytes([data]))
+    print('measurement mode on!')
+
+    print('sample and holding ... (1000 sample)')
+    xAverage, yAverage, zAverage, _ , _ = sampleAndHoldAccel(1000) #first hardware offset
+    print('xyz 10 sample hold avg: '+ str(xAverage) + ', ' + str(yAverage) + ', ' + str(zAverage))
+
+    #write offset to memory
+    i2c.writeto_mem(IMU_I2C_ADDR, 0x1E, bytes([twosCompliments(int(xAverage / 4))])) # concatenate to 1 byte, MSB
+    i2c.writeto_mem(IMU_I2C_ADDR, 0x1F, bytes([twosCompliments(int(yAverage / 4))])) # concatenate to 1 byte, MSB
+    i2c.writeto_mem(IMU_I2C_ADDR, 0x20, bytes([twosCompliments(int((zAverage + 32) / 4))])) # concatenate to 1 byte, MSB
+
+    xAverage, yAverage, zAverage, _ , _ = sampleAndHoldAccel(1000) #then software offset
+    print('xyz 10 sample hold avg: '+ str(xAverage) + ', ' + str(yAverage) + ', ' + str(zAverage))
+    print('now software offset the values')
+
+    print('setting temperature chip resolution ...')
+
+    #Set Resolution and Range
+    data = i2c.readfrom_mem(TMP_I2C_ADDR, TMP_CONFIG_REG, 1) #read Register 0x31—DATA_FORMAT (Read/Write)
+    data = int.from_bytes(data, 'big')
+    print('data:' + str(data))
+    data = data | 0b10000000 # set the high resolution mode
+    i2c.writeto_mem(TMP_I2C_ADDR, TMP_CONFIG_REG, bytes([data]))
+    print('Resolution Set! Waiting for button input')
+
+    print('All initiation is set!')
+
+def spinnerDemo(sessionID):
+    xAverage, yAverage, zAverage, _, _ = sampleAndHoldAccel(10)
+    #format its value to compress
+    dataX, dataY, dataZ = "{0:.2f}".format(xAverage), "{0:.2f}".format(yAverage), "{0:.2f}".format(zAverage)
+    dataTemp = "{0:.2f}".format(sampleAndHoldTemperature(10))
+
+    #Checksum
+    print(xAverage, yAverage, zAverage, dataTemp)
+    sensor_data = ubinascii.hexlify(dataX + dataY+ dataZ+ dataTemp)
+    print('Hex: ' + str(sensor_data) + '[' + str(len(sensor_data)) + ']')
+
+    #AES
+    myCrypto = CryptAes(sessionID)
+    encrypted_iv,encrypted_nodeid,encrypted_sensor_data = myCrypto.encrypt(sensor_data)
+
+
+# --------- Irq Handler and Functions ----------
 def button1_int_handler(pin):
     global STATE
     global onBoardLed
     print('button one pressed')
     if STATE is not 1:
         STATE = 1
-        onBoardLed.off()
+        onBoardLed.on()
         machine.enable_irq(machine.disable_irq())
 
 def button2_int_handler(pin):
@@ -264,11 +239,10 @@ def button2_int_handler(pin):
     print('button two pressed')
     if STATE is not 2:
         STATE = 2
-        onBoardLed = Pin(13, Pin.OUT, Pin.PULL_DOWN)
-        onBoardLed.on()
+        onBoardLed.off()
         machine.enable_irq(machine.disable_irq())
 
-#Init GPIO
+# ---------- Init GPIO ------------
 button1 = Pin(15, Pin.IN, Pin.PULL_UP)
 button1.irq(trigger=Pin.IRQ_RISING, handler=button1_int_handler)
 
@@ -281,6 +255,8 @@ client_id = ubinascii.hexlify(machine.unique_id())
 
 def sessionIDTopicInterruptHandler(topic, msg):
     print('Msg From SessionID Topic: ' + str(msg))
+    spinnerDemo(msg)
+
 
 def connect2broker(client_id, mqtt_server, username, password, port, topic_sub):
     client = MQTTClient(client_id, server = mqtt_server, user = username, password = password, port = port)
@@ -293,20 +269,18 @@ def connect2broker(client_id, mqtt_server, username, password, port, topic_sub):
 client = connect2broker(client_id, "farmer.cloudmqtt.com", 'swpdieal', 'MdwlLdTQWzbI', '14584', sessionIDTopic)
 
 
-
 while True:
-    try:
-        new_message = client.check_msg()
-        time.sleep(1)
-    except OSError as e:
-        print('Failed to connect to MQTT broker. Reconnecting...')
-        time.sleep(10)
-        machine.reset()
+    if STATE is 1:
+        interfacingSensor()
+        FIRSTIME = False
+    elif STATE is 2 and not FIRSTIME:
+        try:
+            client.check_msg()
+            time.sleep(1)
+        except OSError as e:
+            print('Failed to connect to MQTT broker. Reconnecting...')
+            time.sleep(10)
+            machine.reset()
 
 
-# while True:
-#     if STATE is 1:
-#         interfacingSensor()
-#     elif STATE is 2:
-#         spinnerDemo()
 print('\n\n')
