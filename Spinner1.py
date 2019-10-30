@@ -238,6 +238,8 @@ button2.irq(trigger=Pin.IRQ_RISING, handler=button2_int_handler)
 #----------MQTT Shit-----------
 sessionIDTopic = 'SPINNER/SESSIONID'
 sensorDataTopic = 'SPINNER/SENSORDATA'
+acknowledgeTopic = 'SPINNER/ACKNOW'
+WAIT4ACKNOW = True;
 
 client_id = ubinascii.hexlify(machine.unique_id())
 
@@ -259,7 +261,8 @@ def spinnerDemo(sessionID):
     jsonData = myCrypto.send_mqtt(myHMAC)
 
     #send to Topic
-    client.publish(topic=sensorDataTopic,msg=str(jsonData))
+    client.publish(topic=sensorDataTopic,msg=jsonData)
+
 
 def sessionIDTopicInterruptHandler(topic, msg):
     strTopic = str(topic).strip('b\'').strip('\'')
@@ -267,24 +270,33 @@ def sessionIDTopicInterruptHandler(topic, msg):
         print('Msg From SessionID Topic: ' + str(msg))
         spinnerDemo(msg)
 
-    elif strTopic == sensorDataTopic:
-        print('Msg From Sensor Data Topic: ' + str(msg))
+    elif strTopic == acknowledgeTopic:
+        print('Msg From Acknowledge Topic: ' + str(msg))
+        WAIT4ACKNOW = False
 
 def connect2broker(client_id, mqtt_server, username, password, port):
     client = MQTTClient(client_id, server = mqtt_server, user = username, password = password, port = port)
     client.set_callback(sessionIDTopicInterruptHandler)
     client.connect()
     client.subscribe(sessionIDTopic)
+    client.subscribe(acknowledgeTopic)
     print('Connected to %s,  to %s topic' % (mqtt_server, sessionIDTopic))
     return client
-
 
 client = connect2broker(client_id, "farmer.cloudmqtt.com", 'swpdieal', 'MdwlLdTQWzbI', '14584')
 
 while True:
     if STATE is 1:
+        print('------ !!!! START Iteration !!!! -----')
+
         interfacingSensor()
+        print('------ Waiting for Acknowledgement! -----')
+        while (WAIT4ACKNOW):
+            pass
+        WAIT4ACKNOW = True
         FIRSTIME = False
+        print('------ !!!! END Iteration !!!! -----\n')
+
     elif STATE is 2 and not FIRSTIME:
         try:
             client.check_msg()
@@ -292,7 +304,7 @@ while True:
         except OSError as e:
             print('Failed to connect to MQTT broker. Reconnecting...')
             time.sleep(1)
-            #machine.reset()
+            machine.reset()
 
 
 print('\n\n')

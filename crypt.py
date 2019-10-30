@@ -102,7 +102,7 @@ class CryptAes:
         """
         dataPreProcess = self.encrypted_iv + self.encrypted_nodeid + self.encrypted_sensor_data + sessionID
         myHMAC = hmac.HMAC(bytes(self.passphrase,'utf-8'),msg = dataPreProcess, digestmod = hashlib.sha224)
-        return myHMAC.digest()
+        return myHMAC.hexdigest()
 
     def send_mqtt(self, hmac_signed):
         """Prepare the message for MQTT transfer using all of encrypted iv, encrypted nodeid,
@@ -111,9 +111,9 @@ class CryptAes:
         :return             : MQTT message to publish to Spinner #2 on Topic "Sensor_Data"
         """
         data = {}
-        data['e_iv'] = self.encrypted_iv
-        data['e_nodeid'] =  self.encrypted_nodeid
-        data['e_sd'] =  self.encrypted_sensor_data
+        data['e_iv'] = ubinascii.hexlify(self.encrypted_iv)
+        data['e_nodeid'] =  ubinascii.hexlify(self.encrypted_nodeid)
+        data['e_sd'] =  ubinascii.hexlify(self.encrypted_sensor_data)
         data['HMAC'] =  hmac_signed
         print('PROCESSED JSON: '+ str(data))
         return json.dumps(data)
