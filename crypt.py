@@ -70,11 +70,11 @@ class CryptAes:
     def blockEncrypterAES(self, encryptorInstance, hexString):
         div, rem = divmod(len(hexString),16)
         returnStr = bytes()
-        hexString = str(hexString).strip('b\'').strip('\'')
+        #hexString = str(hexString).strip('b\'').strip('\'')
         for i in range(div):
             returnStr += encryptorInstance.encrypt(bytes(hexString[i*16: i*16 + 16], 'utf-8'))
         if rem != 0:
-            padding = 'X'* (16 - rem)
+            padding = b'\x00'* (16 - rem)
             print('hexString[div*16:]+padding:'+hexString[-rem:]+padding)
             returnStr += encryptorInstance.encrypt(bytes(hexString[div*16:]+padding,'utf-8'))
         return returnStr
@@ -102,7 +102,7 @@ class CryptAes:
         """
         dataPreProcess = self.encrypted_iv + self.encrypted_nodeid + self.encrypted_sensor_data + sessionID
         myHMAC = hmac.HMAC(bytes(self.passphrase,'utf-8'),msg = dataPreProcess, digestmod = hashlib.sha224)
-        return myHMAC.hexdigest()
+        return myHMAC.digest()
 
     def send_mqtt(self, hmac_signed):
         """Prepare the message for MQTT transfer using all of encrypted iv, encrypted nodeid,
@@ -111,9 +111,9 @@ class CryptAes:
         :return             : MQTT message to publish to Spinner #2 on Topic "Sensor_Data"
         """
         data = {}
-        data['e_iv'] = ubinascii.hexlify(self.encrypted_iv)
-        data['e_nodeid'] =  ubinascii.hexlify(self.encrypted_nodeid)
-        data['e_sd'] =  ubinascii.hexlify(self.encrypted_sensor_data)
+        data['e_iv'] = self.encrypted_iv
+        data['e_nodeid'] =  self.encrypted_nodeid
+        data['e_sd'] =  self.encrypted_sensor_data
         data['HMAC'] =  hmac_signed
         print('PROCESSED JSON: '+ str(data))
         return json.dumps(data)
@@ -130,11 +130,58 @@ class CryptAes:
         :return message : MQTT message to publish to Spinner #1 on Topic "Acknowledge", can be "Failed Authentication"
                           if verification is unsuccessful
         """
-
-
+        text = json.loads(payload)
+        rece_HMAC = ubinascii.unhexlify(text["HMAC"])       
+        rece_iv = ubinascii.unhexlify(text["e_iv"])
+        rece_nodeid = ubinascii.unhexlify(text["e_nodeid"])
+        rece_sensord = ubinascii.unhexlify(text["e_sd"])
+        dataPreProcess = rece_iv + rece_nodeid + rece_sensord + self.sessionID
+        gen_HMAC = hmac.HMAC(bytes(self.passphrase,'utf-8'),msg = dataPreProcess, digestmod = hashlib.sha224)
+        result = (gen_HMAC.digest() == rece_HMAC)
+        return result
+    
+    def unlock_sensord(self,decryptorInstance, bytestr):
+        div = len(bytestr) / 16
+        returnstr = bytes()
+        result = str()
+        for i in range(0,div):
+            returnstr = decryptorInstance.decrypt(bytestr[i*16: i *16+16])
+            print(returnstr)
+            result += returnstr.decode("utf-8")
+        return result
+    
     def decrypt(self, payload):
         """Decrypts the each encrypted item of the payload.
         Initialize decryption cipher for each item and and use cipher to decrypt payload items.
         :param payload  : received MQTT message from Spinner #1. This includes all encrypted data, nodeid, iv, and HMAC
         :return         : MQTT message to publish to Spinner #1 on Topic "Acknowledge", can be "Successful Decryption"
         """
+        text = json.loads(payload)
+        rece_HMAC = ubinascii.unhexlify(text["HMAC"])       
+        rece_iv = ubinascii.unhexlify(text["e_iv"])
+        rece_nodeid = ubinascii.unhexlify(text["e_nodeid"])
+        rece_sensord = ubinascii.unhexlify(text["e_sd"])
+        
+        #encrypt iv
+        myaes = aes(self.ivkey,2,self.staticiv)
+        iv = myaes.decrypt(rece_iv)
+        striv = iv.decode("utf-8")
+        print(striv)
+        #encrypt data
+        myes = aes(self.datakey,2,striv)
+        byte_sensord = myes.decrypt(rece_sensord)
+        print(byte_sensord)
+        result = self.unlock_sensord(myes,rece_sensord)
+        print(type(result))
+        print(result)
+        result = result.decode("utf-8")
+#         str_sensord = byte_sensord.decode("utf-8")
+#         str_sensord.strip('X')
+#         print(str_sensord)
+#         sensord = ubinascii.unhexlify(bytes(str_sensord,'utf-8'))
+#         print(sensord)
+#         real_sensor = byte_sensord
+#         print(real_sensor)
+# 
+#         sensord = byte_sensord.decode("utf-8")
+#         print(sensord)

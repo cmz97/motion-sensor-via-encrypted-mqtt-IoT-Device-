@@ -10,10 +10,12 @@ from time import sleep
 import random
 import micropython
 from crypt import *#CryptAes
+from umqtt.simple import MQTTClient
 
 try:
-    from umqtt.simple import MQTTClient
-    import hmac
+    import umqtt.simple
+    import umqtt.robust
+    import hmac, hashlib
 except:
     upip.install("micropython-umqtt.simple")
     upip.install("micropython-umqtt.robust")
@@ -43,7 +45,7 @@ if not sta_if.isconnected():
     print("Connected to LAWRENCE")
     print("MAC Address: {0}".format(ubinascii.hexlify(sta_if.config('mac'),':').decode()))
     print("IP Address: {0}".format(sta_if.ifconfig()[0]))
-
+    
 def call(pin):
     global interrupt1
     pwm.deinit()
@@ -59,12 +61,13 @@ def cancel_de(pin):
 
 #Switch 2 interrupt
 def call2(pin):
-    global interrupt2
+    global interrupt2, pub
+    pub = 1
     interrupt2 = 1
-
+    
 def cancel_de2(pin):
     tim2.init(period=300, mode=Timer.ONE_SHOT, callback=call2)
-
+    
 tim = Timer(1)
 tim2 = Timer(2)
 switch1.irq(trigger=Pin.IRQ_FALLING, handler=cancel_de)
@@ -75,7 +78,7 @@ temp_id = list(i2c.scan())[0]
 
 def initialize():
     addr_list = list(i2c.scan())
-    acc_addr = i2c.readfrom_mem(addr_list[1],0,1)
+    acc_addr = i2c.readfrom_mem(addr_list[1],0,1) 
     temp_addr = i2c.readfrom_mem(addr_list[0],0x0b,1)
 
     if acc_addr != b'\xe5':
@@ -111,7 +114,7 @@ def calibration():
     y_offset = 0
     z_offset = 0
     c = 0
-    while c < 5000:
+    while c < 5000:   
         i2c.readfrom_mem_into(acc_id,0x32,read)
         value_x = (read[1] << 8 | read[0]) & 1023
         value_x = acc_trans(value_x, 10)
@@ -144,33 +147,48 @@ def calibration():
     return x,y,z
         
 ##MQTTFunc:
-
+    
 sessionIDTopic_pub = 'SPINNER/SESSIONID'
 sensorTopic_sub = 'SPINNER/SENSORDATA'
+akTopic_pub = 'SPINNER/ACKNOW'
 client_id = ubinascii.hexlify(machine.unique_id())
 mqtt_server ='farmer.cloudmqtt.com'
 
-def receive_handler(topic,msg):
-    print('Msg From SessionID Topic: ' + str(msg))
 
-#Publish
+#h_mac = myaes.sign_hmac(b'6')
+#print(hmac)
+#a = b'{"e_iv": "\\n\xd9,\xf6D\xd3b\xa8%\\u0005 \xe9\xeb\x82l\xcb", "e_sd": "\x96;d\xe8\xe0\xa3SeaMO<6I\\u000c\xc9\xb2\x83p\xc2n 2\x91\xde\xf5\\u0003\\u000fo\\u0002\xcbn\xc3R6\x8b\xe8\x99\x87c\xdd\x8fI[\x95\x94q\xa1", "e_nodeid": "\\u0016#,\xd93\xe0\xd3|\xc4%\x8f\xc8\xd8D7A", "HMAC": "D\xe78\xcf\xf8@o,^\xa6\xb2\xa0\\u0017\xf1\\u0018a\x94~\xce'
+
+def receive_handler(topic,msg):
+    global num
+    print('Msg From Sensordata Topic:  ' + str(msg))
+    #Crypt
+    mycrp = CryptAes(bytes(str(num),'uft-8'))
+    fail_check = mycrp.verify_hmac(msg)
+    if fail_check == 0:
+        client.pulish(topic=akTopic_pub, msg="Fail Authentication")
+    #client.pulish(topic=akTopic_pub,msg=new_msg)
+    mycrp.decrypt(msg)
+    print("depted")
+    
+#Publish    
 def mqtt_pub(client_id,maqtt_server,username,password,port,Topic_pub,Topic_sub):
     client = MQTTClient(client_id, server = mqtt_server,user = username, password = password, port = port)
     client.connect()
     client.set_callback(receive_handler)
     client.subscribe(Topic_sub)
-    print('Connected to %s MQTT broker, subscribed to %s topic' % (mqtt_server, Topic_pub))
+    print('Connected to %s MQTT broker, subscribed to %s topic' % (mqtt_server, Topic_sub))
     return client
 
 ##Random Number Generate
-pub = 1
+pub = 0
 def send_sessionid(pin):
-    global pub
+    global pub, num
     if pub > 0:
-        num = random.randint(0,1024)
         print("Session ID published")
+        num = random.randint(0,2024)
         client.publish(topic=sessionIDTopic_pub,msg=str(num))
-        pub = 1
+        pub = 0
         print(num)
     else:
         pass
@@ -178,12 +196,12 @@ def send_sessionid(pin):
 client = mqtt_pub(client_id,mqtt_server,'swpdieal','MdwlLdTQWzbI','14584',sessionIDTopic_pub, sensorTopic_sub)
 tim3 = Timer(3)
 tim3.init(period=1000, mode=1, callback=send_sessionid)
-#client2 = mqtt_sub(client_id,mqtt_server,'swpdieal','MdwlLdTQWzbI','14584',sensorTopic_sub)
 while True:
     if interrupt2 > 0:
-        try:
-            client.check_msg()
-            sleep(1)
-        except:
-            print("Fail to subscribe, waitting for information")
-            sleep(1)
+        client.check_msg()
+        sleep(1)
+        
+        
+#         except:
+#             print("Fail to subscribe, waitting for information")
+#             machine.reset()
