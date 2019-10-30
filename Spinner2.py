@@ -9,14 +9,15 @@ from ntptime import settime
 from time import sleep
 import random
 import micropython
-import gc
-gc.collect()
+from crypt import *#CryptAes
 
 try:
     from umqtt.simple import MQTTClient
+    import hmac
 except:
     upip.install("micropython-umqtt.simple")
     upip.install("micropython-umqtt.robust")
+    upip.install("hmac")
 
 
 #Initialization
@@ -35,7 +36,7 @@ temp_last = 0
 sta_if = network.WLAN(network.STA_IF)
 sta_if.active(True)
 if not sta_if.isconnected():
-    sta_if.connect('ChinaMobile', 'miaomiaomiao')
+    sta_if.connect('LAWRENCE', '11111111')
     while not sta_if.isconnected():
         sleep(1)
     print("Oh Yes! Get connected")
@@ -43,9 +44,8 @@ if not sta_if.isconnected():
     print("MAC Address: {0}".format(ubinascii.hexlify(sta_if.config('mac'),':').decode()))
     print("IP Address: {0}".format(sta_if.ifconfig()[0]))
 
-
 def call(pin):
-    global interrupt2
+    global interrupt1
     pwm.deinit()
     led_board = Pin(13, Pin.OUT)
     led_board.value(1)
@@ -53,7 +53,7 @@ def call(pin):
     print("Waiting for calibrating")
     x,y,z = calibration()
     print("Calibration Done. The offset value is x:{},y:{},z:{}".format(x,y,z))
-    interrupt2 = 0
+    interrupt1 = 0
 def cancel_de(pin):
     tim.init(period=300, mode=Timer.ONE_SHOT, callback=call)
 
@@ -61,6 +61,7 @@ def cancel_de(pin):
 def call2(pin):
     global interrupt2
     interrupt2 = 1
+
 def cancel_de2(pin):
     tim2.init(period=300, mode=Timer.ONE_SHOT, callback=call2)
 
@@ -141,26 +142,48 @@ def calibration():
     z = acc_trans(z, 10) - offset[0]
     sleep(1)
     return x,y,z
+        
+##MQTTFunc:
 
-##MQTT:
 sessionIDTopic_pub = 'SPINNER/SESSIONID'
+sensorTopic_sub = 'SPINNER/SENSORDATA'
 client_id = ubinascii.hexlify(machine.unique_id())
-mqtt_server='farmer.cloudmqtt.com'
+mqtt_server ='farmer.cloudmqtt.com'
 
-def connect_and_subscribe(client_id,maqtt_server,username,password,port,sessionIDTopic_pub):
-  client = MQTTClient(client_id, server = mqtt_server,user = username, password = password, port = port)
-  #client.set_callback(back)
-  client.connect()
-  print('Connected to %s MQTT broker, subscribed to %s topic' % (mqtt_server, sessionIDTopic_pub))
-  return client
+def receive_handler(topic,msg):
+    print('Msg From SessionID Topic: ' + str(msg))
 
-client = connect_and_subscribe(client_id,mqtt_server,'swpdieal','MdwlLdTQWzbI','14584',sessionIDTopic_pub)
+#Publish
+def mqtt_pub(client_id,maqtt_server,username,password,port,Topic_pub,Topic_sub):
+    client = MQTTClient(client_id, server = mqtt_server,user = username, password = password, port = port)
+    client.connect()
+    client.set_callback(receive_handler)
+    client.subscribe(Topic_sub)
+    print('Connected to %s MQTT broker, subscribed to %s topic' % (mqtt_server, Topic_pub))
+    return client
 
 ##Random Number Generate
+pub = 1
 def send_sessionid(pin):
-    global client
-    num = random.randint(0,1024)
-    client.publish(topic=sessionIDTopic_pub,msg=str(num))
-    print(num)
+    global pub
+    if pub > 0:
+        num = random.randint(0,1024)
+        print("Session ID published")
+        client.publish(topic=sessionIDTopic_pub,msg=str(num))
+        pub = 1
+        print(num)
+    else:
+        pass
+
+client = mqtt_pub(client_id,mqtt_server,'swpdieal','MdwlLdTQWzbI','14584',sessionIDTopic_pub, sensorTopic_sub)
 tim3 = Timer(3)
 tim3.init(period=1000, mode=1, callback=send_sessionid)
+#client2 = mqtt_sub(client_id,mqtt_server,'swpdieal','MdwlLdTQWzbI','14584',sensorTopic_sub)
+while True:
+    if interrupt2 > 0:
+        try:
+            client.check_msg()
+            sleep(1)
+        except:
+            print("Fail to subscribe, waitting for information")
+            sleep(1)
