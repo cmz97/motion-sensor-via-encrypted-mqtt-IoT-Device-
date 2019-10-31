@@ -14,6 +14,7 @@ from math import sqrt
 from math import acos
 from machine import PWM
 from math import floor
+import urequests
 
 global ssid
 global wlan
@@ -251,7 +252,7 @@ def spinnerDemo(sessionID):
 
     #Checksum
     print(xAverage, yAverage, zAverage, dataTemp)
-    sensor_data = dataX + dataY+ dataZ+ dataTemp
+    sensor_data = dataX + ' ' + dataY + ' ' + dataZ + ' ' +dataTemp
     print('Hex: ' + str(sensor_data) + '[' + str(len(sensor_data)) + ']')
 
     #AES
@@ -259,6 +260,13 @@ def spinnerDemo(sessionID):
     myCrypto.encrypt(sensor_data)
     myHMAC = myCrypto.sign_hmac(sessionID)
     jsonData = myCrypto.send_mqtt(myHMAC)
+
+    #IFTTT SHIT
+    iftttDict = {}
+    iftttDict['value1'] =  myCrypto.nodeid + "|||" + str(sessionID) + "|||" + dataX + "|||" + dataY + "|||" + dataZ + "|||" + dataTemp
+    r = urequests.request("POST", "https://maker.ifttt.com/trigger/IFTTT_ECE40862/with/key/g7HnGNBx3R7FfYQLrhVAIeqUGU3hXokCNEeRH3nHCad", json=iftttDict, headers={"Content-Type": "application/json"})
+    print(r.text)
+
 
     #send to Topic
     client.publish(topic=sensorDataTopic,msg=jsonData)

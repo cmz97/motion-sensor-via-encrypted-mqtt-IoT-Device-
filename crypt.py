@@ -75,7 +75,6 @@ class CryptAes:
             returnStr += encryptorInstance.encrypt(bytes(hexString[i*16: i*16 + 16],'utf-8'))
         if rem != 0:
             padding = b'\x00'* (16 - rem)
-            print('hexString[div*16:]+padding:'+str(hexString[-rem:]+padding))
             returnStr += encryptorInstance.encrypt(bytes(hexString[div*16:],'utf-8')+padding)
         return returnStr
 

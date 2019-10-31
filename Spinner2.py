@@ -45,7 +45,7 @@ if not sta_if.isconnected():
     print("Connected to LAWRENCE")
     print("MAC Address: {0}".format(ubinascii.hexlify(sta_if.config('mac'),':').decode()))
     print("IP Address: {0}".format(sta_if.ifconfig()[0]))
-    
+
 def call(pin):
     global interrupt1
     pwm.deinit()
@@ -64,10 +64,10 @@ def call2(pin):
     global interrupt2, pub
     pub = 1
     interrupt2 = 1
-    
+
 def cancel_de2(pin):
     tim2.init(period=300, mode=Timer.ONE_SHOT, callback=call2)
-    
+
 tim = Timer(1)
 tim2 = Timer(2)
 switch1.irq(trigger=Pin.IRQ_FALLING, handler=cancel_de)
@@ -78,7 +78,7 @@ temp_id = list(i2c.scan())[0]
 
 def initialize():
     addr_list = list(i2c.scan())
-    acc_addr = i2c.readfrom_mem(addr_list[1],0,1) 
+    acc_addr = i2c.readfrom_mem(addr_list[1],0,1)
     temp_addr = i2c.readfrom_mem(addr_list[0],0x0b,1)
 
     if acc_addr != b'\xe5':
@@ -114,7 +114,7 @@ def calibration():
     y_offset = 0
     z_offset = 0
     c = 0
-    while c < 5000:   
+    while c < 5000:
         i2c.readfrom_mem_into(acc_id,0x32,read)
         value_x = (read[1] << 8 | read[0]) & 1023
         value_x = acc_trans(value_x, 10)
@@ -145,9 +145,9 @@ def calibration():
     z = acc_trans(z, 10) - offset[0]
     sleep(1)
     return x,y,z
-        
+
 ##MQTTFunc:
-    
+
 sessionIDTopic_pub = 'SPINNER/SESSIONID'
 sensorTopic_sub = 'SPINNER/SENSORDATA'
 akTopic_pub = 'SPINNER/ACKNOW'
@@ -170,8 +170,8 @@ def receive_handler(topic,msg):
     #client.pulish(topic=akTopic_pub,msg=new_msg)
     mycrp.decrypt(msg)
     print("depted")
-    
-#Publish    
+
+#Publish
 def mqtt_pub(client_id,maqtt_server,username,password,port,Topic_pub,Topic_sub):
     client = MQTTClient(client_id, server = mqtt_server,user = username, password = password, port = port)
     client.connect()
@@ -200,8 +200,8 @@ while True:
     if interrupt2 > 0:
         client.check_msg()
         sleep(1)
-        
-        
+
+
 #         except:
 #             print("Fail to subscribe, waitting for information")
 #             machine.reset()
