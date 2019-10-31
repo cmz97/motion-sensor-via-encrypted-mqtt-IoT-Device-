@@ -55,7 +55,7 @@ def call(pin):
     print("Waiting for calibrating")
     x,y,z = calibration()
     print("Calibration Done. The offset value is x:{},y:{},z:{}".format(x,y,z))
-    
+
 def cancel_de(pin):
     tim.init(period=300, mode=Timer.ONE_SHOT, callback=call)
 
@@ -146,14 +146,9 @@ def calibration():
     z = acc_trans(z, 10) - offset[0]
     sleep(1)
     return x,y,z
-<<<<<<< HEAD
 
 ##MQTTFunc:
 
-=======
-        
-##MQTTFunc:  
->>>>>>> 36a3b7473de84820c2a0116f6cfe32e2cdc42275
 sessionIDTopic_pub = 'SPINNER/SESSIONID'
 sensorTopic_sub = 'SPINNER/SENSORDATA'
 akTopic_pub = 'SPINNER/ACKNOW'
@@ -163,7 +158,7 @@ temp_last = 0
 pub = 0
 
 def receive_handler(topic,msg):
-    global num,client,pub,temp_last 
+    global num,client,pub,temp_last
     print('Msg From Sensordata Topic:  ' + str(msg))
     r_led.value(0)
     pwm.init()
@@ -171,36 +166,27 @@ def receive_handler(topic,msg):
     mycrp = CryptAes(bytes(str(num),'uft-8'))
     fail_check = mycrp.verify_hmac(msg)
     if fail_check == 0:
-<<<<<<< HEAD
-        client.pulish(topic=akTopic_pub, msg="Fail Authentication")
-    #client.pulish(topic=akTopic_pub,msg=new_msg)
-    mycrp.decrypt(msg)
-    print("depted")
-
-#Publish
-=======
         client.publish(topic=akTopic_pub, msg="Fail Authentication")
         pub = 1
-    
+
     check,node_id,data_x,data_y,data_z,temp = mycrp.decrypt(msg)
-    
+
     #Demo
     if (data_x > 0.8 or data_y > 0.8 or data_z > 1.2):
         r_led.value(1)
-    if (temp_last):        
+    if (temp_last):
         freq = pwm.freq() + int((temp_last - temp)) * 5
-        pwm.freq(freq) 
+        pwm.freq(freq)
     if check:
         client.publish(topic=akTopic_pub, msg="Successful Decryption")
         temp_last = temp
         data = {}
-        data['value1'] = node_id + '|||' + str(num) + '|||' + str(data_x) + '|||' + str(data_y) + '|||' + str(data_z) + '|||' + str(temp) 
+        data['value1'] = node_id + '|||' + str(num) + '|||' + str(data_x) + '|||' + str(data_y) + '|||' + str(data_z) + '|||' + str(temp)
         r = urequests.request("POST", "https://maker.ifttt.com/trigger/decryption/with/key/l2IcanZRKg_-1ny_9_Dhew-gadfK0vblGjpIJtCK0-w", json=data, headers={"Content-Type": "application/json"})
         print(r.text)
         pub = 1
-    
-#Connect to the mqtt    
->>>>>>> 36a3b7473de84820c2a0116f6cfe32e2cdc42275
+
+#Connect to the mqtt
 def mqtt_pub(client_id,maqtt_server,username,password,port,Topic_pub,Topic_sub):
     client = MQTTClient(client_id, server = mqtt_server,user = username, password = password, port = port)
     client.connect()
@@ -229,12 +215,3 @@ while True:
     if interrupt2 > 0:
         client.check_msg()
         sleep(1)
-<<<<<<< HEAD
-
-
-#         except:
-#             print("Fail to subscribe, waitting for information")
-#             machine.reset()
-=======
-        
->>>>>>> 36a3b7473de84820c2a0116f6cfe32e2cdc42275
