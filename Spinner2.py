@@ -172,7 +172,7 @@ def receive_handler(topic,msg):
     check,node_id,data_x,data_y,data_z,temp = mycrp.decrypt(msg)
 
     #Demo
-    if (data_x > 0.8 or data_y > 0.8 or data_z > 1.2):
+    if (abs(data_x) > 0.8 or abs(data_y) > 0.8 or abs(data_z) > 1.2):
         r_led.value(1)
     if (temp_last):
         freq = pwm.freq() + int((temp_last - temp)) * 5
