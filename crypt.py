@@ -171,6 +171,7 @@ class CryptAes:
         myes = aes(self.datakey,2,striv)
         byte_sensord = myes.decrypt(rece_sensord)
         print(byte_sensord)
+        print(byte_sensord.decode("utf-8"))
         result = self.unlock_sensord(myes,rece_sensord)
         print(type(result))
         print(result)
