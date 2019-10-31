@@ -140,16 +140,6 @@ class CryptAes:
         result = (gen_HMAC.digest() == rece_HMAC)
         return result
 
-    def unlock_sensord(self,decryptorInstance, bytestr):
-        div = len(bytestr) / 16
-        returnstr = bytes()
-        result = str()
-        for i in range(0,div):
-            returnstr = decryptorInstance.decrypt(bytestr[i*16: i *16+16])
-            print(returnstr)
-            result += returnstr.decode("utf-8")
-        return result
-
     def decrypt(self, payload):
         """Decrypts the each encrypted item of the payload.
         Initialize decryption cipher for each item and and use cipher to decrypt payload items.
@@ -169,20 +159,13 @@ class CryptAes:
         print(striv)
         #encrypt data
         myes = aes(self.datakey,2,striv)
+        node_id = myes.decrypt(rece_nodeid).decode("utf-8")
         byte_sensord = myes.decrypt(rece_sensord)
-        print(byte_sensord)
-        print(byte_sensord.decode("utf-8"))
-        result = self.unlock_sensord(myes,rece_sensord)
-        print(type(result))
-        print(result)
-        result = result.decode("utf-8")
-#         str_sensord = byte_sensord.decode("utf-8")
-#         str_sensord.strip('X')
-#         print(str_sensord)
-#         sensord = ubinascii.unhexlify(bytes(str_sensord,'utf-8'))
-#         print(sensord)
-#         real_sensor = byte_sensord
-#         print(real_sensor)
-#
-#         sensord = byte_sensord.decode("utf-8")
-#         print(sensord)
+        sensord = byte_sensord.decode("utf-8")
+        data = sensord.strip(chr(0)).split(' ')
+        data_x = float(data[0])
+        data_y = float(data[1])
+        data_z = float(data[2])
+        data_temp = float(data[3])
+        print(data_x,data_y,data_z,data_temp)
+        return True, node_id, data_x, data_y, data_z, data_temp
