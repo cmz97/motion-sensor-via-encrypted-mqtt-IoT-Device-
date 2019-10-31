@@ -251,7 +251,7 @@ def spinnerDemo(sessionID):
 
     #Checksum
     print(xAverage, yAverage, zAverage, dataTemp)
-    sensor_data = ubinascii.hexlify(dataX + dataY+ dataZ+ dataTemp)
+    sensor_data = dataX + dataY+ dataZ+ dataTemp
     print('Hex: ' + str(sensor_data) + '[' + str(len(sensor_data)) + ']')
 
     #AES
@@ -287,19 +287,21 @@ client = connect2broker(client_id, "farmer.cloudmqtt.com", 'swpdieal', 'MdwlLdTQ
 
 while True:
     if STATE is 1:
-        print('------ !!!! START Iteration !!!! -----')
 
         interfacingSensor()
-        print('------ Waiting for Acknowledgement! -----')
-        while (WAIT4ACKNOW):
-            pass
-        WAIT4ACKNOW = True
+
         FIRSTIME = False
-        print('------ !!!! END Iteration !!!! -----\n')
 
     elif STATE is 2 and not FIRSTIME:
         try:
+            print('------ !!!! START Iteration !!!! -----')
             client.check_msg()
+            print('------ Waiting for Acknowledgement! -----')
+            # time.sleep(1)
+            # while (WAIT4ACKNOW):
+            #     pass
+            WAIT4ACKNOW = True
+            print('------ !!!! END Iteration !!!! -----\n')
             time.sleep(1)
         except OSError as e:
             print('Failed to connect to MQTT broker. Reconnecting...')

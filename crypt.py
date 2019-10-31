@@ -72,11 +72,11 @@ class CryptAes:
         returnStr = bytes()
         #hexString = str(hexString).strip('b\'').strip('\'')
         for i in range(div):
-            returnStr += encryptorInstance.encrypt(bytes(hexString[i*16: i*16 + 16], 'utf-8'))
+            returnStr += encryptorInstance.encrypt(bytes(hexString[i*16: i*16 + 16],'utf-8'))
         if rem != 0:
             padding = b'\x00'* (16 - rem)
-            print('hexString[div*16:]+padding:'+hexString[-rem:]+padding)
-            returnStr += encryptorInstance.encrypt(bytes(hexString[div*16:]+padding,'utf-8'))
+            print('hexString[div*16:]+padding:'+str(hexString[-rem:]+padding))
+            returnStr += encryptorInstance.encrypt(bytes(hexString[div*16:],'utf-8')+padding)
         return returnStr
 
     def encrypt(self, sensor_data):
@@ -102,7 +102,7 @@ class CryptAes:
         """
         dataPreProcess = self.encrypted_iv + self.encrypted_nodeid + self.encrypted_sensor_data + sessionID
         myHMAC = hmac.HMAC(bytes(self.passphrase,'utf-8'),msg = dataPreProcess, digestmod = hashlib.sha224)
-        return myHMAC.digest()
+        return myHMAC.hexdigest()
 
     def send_mqtt(self, hmac_signed):
         """Prepare the message for MQTT transfer using all of encrypted iv, encrypted nodeid,
@@ -111,9 +111,9 @@ class CryptAes:
         :return             : MQTT message to publish to Spinner #2 on Topic "Sensor_Data"
         """
         data = {}
-        data['e_iv'] = self.encrypted_iv
-        data['e_nodeid'] =  self.encrypted_nodeid
-        data['e_sd'] =  self.encrypted_sensor_data
+        data['e_iv'] = ubinascii.hexlify(self.encrypted_iv)
+        data['e_nodeid'] =  ubinascii.hexlify(self.encrypted_nodeid)
+        data['e_sd'] =  ubinascii.hexlify(self.encrypted_sensor_data)
         data['HMAC'] =  hmac_signed
         print('PROCESSED JSON: '+ str(data))
         return json.dumps(data)
@@ -131,7 +131,7 @@ class CryptAes:
                           if verification is unsuccessful
         """
         text = json.loads(payload)
-        rece_HMAC = ubinascii.unhexlify(text["HMAC"])       
+        rece_HMAC = ubinascii.unhexlify(text["HMAC"])
         rece_iv = ubinascii.unhexlify(text["e_iv"])
         rece_nodeid = ubinascii.unhexlify(text["e_nodeid"])
         rece_sensord = ubinascii.unhexlify(text["e_sd"])
@@ -139,7 +139,7 @@ class CryptAes:
         gen_HMAC = hmac.HMAC(bytes(self.passphrase,'utf-8'),msg = dataPreProcess, digestmod = hashlib.sha224)
         result = (gen_HMAC.digest() == rece_HMAC)
         return result
-    
+
     def unlock_sensord(self,decryptorInstance, bytestr):
         div = len(bytestr) / 16
         returnstr = bytes()
@@ -149,7 +149,7 @@ class CryptAes:
             print(returnstr)
             result += returnstr.decode("utf-8")
         return result
-    
+
     def decrypt(self, payload):
         """Decrypts the each encrypted item of the payload.
         Initialize decryption cipher for each item and and use cipher to decrypt payload items.
@@ -157,11 +157,11 @@ class CryptAes:
         :return         : MQTT message to publish to Spinner #1 on Topic "Acknowledge", can be "Successful Decryption"
         """
         text = json.loads(payload)
-        rece_HMAC = ubinascii.unhexlify(text["HMAC"])       
+        rece_HMAC = ubinascii.unhexlify(text["HMAC"])
         rece_iv = ubinascii.unhexlify(text["e_iv"])
         rece_nodeid = ubinascii.unhexlify(text["e_nodeid"])
         rece_sensord = ubinascii.unhexlify(text["e_sd"])
-        
+
         #encrypt iv
         myaes = aes(self.ivkey,2,self.staticiv)
         iv = myaes.decrypt(rece_iv)
@@ -182,6 +182,6 @@ class CryptAes:
 #         print(sensord)
 #         real_sensor = byte_sensord
 #         print(real_sensor)
-# 
+#
 #         sensord = byte_sensord.decode("utf-8")
 #         print(sensord)
